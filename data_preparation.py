@@ -1,0 +1,104 @@
+
+!pip install --upgrade openai pandas openpyxl
+
+import os
+
+import pandas as pd
+
+raw_path = "Raw Data.xlsx"
+df = pd.read_excel(raw_path)
+TEXT_COLUMN = "Text"
+print(df.shape)
+df[[TEXT_COLUMN]].head()
+
+df[[TEXT_COLUMN]].tail()
+
+from openai import OpenAI
+
+client = OpenAI()
+
+import math
+
+MODEL_NAME = "gpt-4o"
+
+def generate_ai_style_mimic(human_text: str, min_words=150, max_words=250) -> str:
+    orig_words = len(str(human_text).split())
+    target = max(min_words, min(max_words, int(orig_words * 0.9)))
+
+    prompt = f"""
+You are helping for an AI-vs-human text classification project.
+
+Below is an example of HUMAN writing.
+
+Your task:
+- Write a NEW passage that could plausibly be written by the same person.
+- Mimic the style: tone, level of detail, vocabulary, sentence complexity, POV (I/we/they), etc.
+- It must NOT be a paraphrase or summary of the original.
+- It should NOT reuse distinctive phrases or sentences from the original.
+- Feel free to choose a related or similar topic, but change the concrete details.
+- Aim for about {target} words (between {min_words} and {max_words} words).
+
+HUMAN EXAMPLE:
+\"\"\"{human_text}\"\"\"
+
+Now write the new passage in the same style.
+    """.strip()
+
+    resp = client.chat.completions.create(
+        model=MODEL_NAME,
+        messages=[
+            {"role": "system", "content": "You imitate writing style while changing content. Do not copy or paraphrase."},
+            {"role": "user", "content": prompt},
+        ],
+        temperature=0.9,
+        max_tokens=512,
+    )
+
+    ai_text = resp.choices[0].message.content.strip()
+    words = ai_text.split()
+    if len(words) > max_words + 50:
+        ai_text = " ".join(words[:max_words+10])
+
+    return ai_text
+
+import time
+
+ai_texts = []
+for i, human in enumerate(df[TEXT_COLUMN].astype(str).tolist()):
+    print(f"Generating AI passage {i+1}/{len(df)}...")
+    try:
+        ai_t = generate_ai_style_mimic(human)
+    except Exception as e:
+        print(f"  Error at row {i}: {e}")
+        ai_t = ""
+    ai_texts.append(ai_t)
+    time.sleep(0.3)
+
+len(ai_texts)
+
+df["ai_text"] = ai_texts
+df[["ai_text"]].head()
+
+df_h = df[[TEXT_COLUMN]].copy()
+df_h = df_h.rename(columns={TEXT_COLUMN: "text"})
+df_h["label"] = "human"
+
+df_a = df[["ai_text"]].copy()
+df_a = df_a.rename(columns={"ai_text": "text"})
+df_a["label"] = "ai"
+
+df_all = pd.concat([df_h, df_a], ignore_index=True)
+df_all.to_csv("dataset_text_label_350rows.csv", index=False)
+df_all.head()
+
+df_all.tail()
+
+out_path = "Raw Data_with_ai.xlsx"
+df_all.to_excel(out_path, index=False)
+
+out_path_csv = "Raw Data_with_ai.csv"
+df_all.to_csv(out_path_csv, index=False)
+
+from google.colab import files
+files.download("Raw Data_with_ai.xlsx")
+files.download("Raw Data_with_ai.csv")
