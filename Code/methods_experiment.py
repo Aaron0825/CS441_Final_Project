@@ -39,7 +39,6 @@ x = df[TEXT_COL].astype(str)
 y = df[LABEL_COL].astype(str)
 y.value_counts()
 
-# First: train+val vs test
 x_tv, x_test, y_tv, y_test = train_test_split(
     x, y,
     test_size=0.2,
@@ -47,10 +46,9 @@ x_tv, x_test, y_tv, y_test = train_test_split(
     random_state=42
 )
 
-# Then: split train+val into train and val
 x_train, x_val, y_train, y_val = train_test_split(
     x_tv, y_tv,
-    test_size=0.25,   # 0.25 of 0.8 = 0.2 overall
+    test_size=0.25,
     stratify=y_tv,
     random_state=42
 )
@@ -59,32 +57,20 @@ len(x_train), len(x_val), len(x_test)
 
 def stylometric_features(text: str):
     text = str(text)
-    # split into sentences by ., !, ?
     sentences = re.split(r"[.!?]+", text)
     sentences = [s.strip() for s in sentences if s.strip()]
     words = text.split()
-
     n_sent = len(sentences) if sentences else 1
     n_words = len(words) if words else 1
-
-    # sentence length stats
     sent_lens = [len(s.split()) for s in sentences] if sentences else [n_words]
     avg_sent_len = np.mean(sent_lens)
     std_sent_len = np.std(sent_lens)
-
-    # type-token ratio
     unique_words = len(set(w.lower() for w in words))
     ttr = unique_words / n_words
-
-    # long word ratio (>= 7 chars)
     long_words = sum(1 for w in words if len(w) >= 7)
     long_word_ratio = long_words / n_words
-
-    # punctuation ratio
     punct_chars = sum(1 for c in text if c in string.punctuation)
     punct_ratio = punct_chars / max(len(text), 1)
-
-    # uppercase ratio
     upper_chars = sum(1 for c in text if c.isupper())
     upper_ratio = upper_chars / max(len(text), 1)
 
@@ -97,7 +83,6 @@ def stylometric_features(text: str):
         upper_ratio,
     ])
 
-# Precompute stylometric features
 x_train_sty = np.vstack(x_train.apply(stylometric_features))
 x_val_sty   = np.vstack(x_val.apply(stylometric_features))
 x_test_sty  = np.vstack(x_test.apply(stylometric_features))
@@ -129,8 +114,8 @@ def encode_with_bert(texts, max_len=256, batch_size=16):
 
         with torch.no_grad():
             outputs = bert_model(**enc)
-            hidden = outputs.last_hidden_state  # [B, T, H]
-            emb = hidden.mean(dim=1)            # mean-pool over tokens -> [B, H]
+            hidden = outputs.last_hidden_state
+            emb = hidden.mean(dim=1)
 
         all_embs.append(emb.cpu().numpy())
     return np.concatenate(all_embs, axis=0)
